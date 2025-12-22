@@ -17,6 +17,7 @@ def pipe(
     """
     Pipeline for Open WebUI: PDF → VLM → Structured JSON
     """
+
     try:
         files = body.get("files", [])
         if not files:
