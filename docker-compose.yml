@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # Контейнер с OCR Pipeline и зависимостями
+  # Этот контейнер устанавливает зависимости в /deps при сборке
+  # При первом запуске Docker автоматически копирует данные из образа в volume
+  ocr-pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    image: ocr-pipeline:latest
+    container_name: ocr-pipeline
+    volumes:
+      # Volume для зависимостей - монтируется в OpenWebUI
+      # При первом монтировании Docker автоматически копирует данные из /deps образа в volume
+      - ocr-pipeline-deps:/deps
+    networks:
+      - open-webui-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "PYTHONPATH=/deps python -c 'import fitz; import docx; import PIL; import cv2'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Оригинальный OpenWebUI контейнер
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "3000:8080"
+    volumes:
+      # Данные OpenWebUI
+      - open-webui-data:/app/backend/data
+      # Монтируем код пайплайна напрямую с хоста
+      - ./OCR:/app/pipelines/OCR:ro
+      # Монтируем зависимости из контейнера ocr-pipeline
+      - ocr-pipeline-deps:/app/pipelines-deps:ro
+    environment:
+      - ENABLE_PIPELINES=true
+      # Добавляем путь к зависимостям в PYTHONPATH
+      - PYTHONPATH=/app/pipelines-deps:${PYTHONPATH}
+      # Настройки VLM API (можно переопределить через .env)
+      - VLM_API_URL=${VLM_API_URL:-http://host.docker.internal:8000/v1}
+      - VLM_API_KEY=${VLM_API_KEY:-token-abc}
+      - VLM_MODEL_NAME=${VLM_MODEL_NAME:-qwen3vl-8b-instruct-fp8}
+    depends_on:
+      ocr-pipeline:
+        condition: service_started
+    networks:
+      - open-webui-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  open-webui-data:
+    driver: local
+  ocr-pipeline-deps:  # Volume для зависимостей (создается при сборке ocr-pipeline)
+    driver: local
+
+networks:
+  open-webui-network:
+    driver: bridge
+

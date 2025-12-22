@@ -1,0 +1,40 @@
+# Игнорируемые файлы при сборке Docker образа
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Docker
+docker-compose.yml
+.dockerignore
+Dockerfile*
+
+# Документация
+*.md
+README.md
+
+# Логи
+*.log
+
+# Временные файлы
+*.tmp
+.DS_Store
+

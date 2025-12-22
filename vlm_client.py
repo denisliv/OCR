@@ -19,7 +19,8 @@ from .prompts import FRAGMENT_PROMPT, SYSTEM_PROMPT_JSON, SYSTEM_PROMPT_MD
 from .schemas import parser
 
 
-def invoke_vlm_ocr(b64_images: List[str]) -> str:
+async def invoke_vlm_ocr(b64_images: List[str]) -> str:
+    """Асинхронно выполняет OCR через VLM и возвращает Markdown."""
     llm = ChatOpenAI(
         base_url=VLM_API_URL,
         api_key=VLM_API_KEY,
@@ -43,14 +44,15 @@ def invoke_vlm_ocr(b64_images: List[str]) -> str:
                 ]
             ),
         ]
-        resp = llm.invoke(messages)
+        resp = await llm.ainvoke(messages)
         cleaned = fix_ocr_markdown(resp.content.strip())
         all_md.append(cleaned)
 
     return "\n\n".join(md for md in all_md if md)
 
 
-def invoke_vlm_json(markdown_text: str) -> dict:
+async def invoke_vlm_json(markdown_text: str) -> dict:
+    """Асинхронно преобразует Markdown в JSON через VLM."""
     llm = ChatOpenAI(
         base_url=VLM_API_URL,
         api_key=VLM_API_KEY,
@@ -66,9 +68,16 @@ def invoke_vlm_json(markdown_text: str) -> dict:
         HumanMessage(content=[{"type": "text", "text": cleaned_md}]),
     ]
 
-    response = llm.invoke(messages)
-    parsed = parser.parse(response.content)
-    result = parsed.model_dump(by_alias=True, exclude_none=False)
+    response = await llm.ainvoke(messages)
+
+    try:
+        parsed = parser.parse(response.content)
+        result = parsed.model_dump(by_alias=True, exclude_none=False)
+    except Exception as e:
+        # Если парсинг не удался, возвращаем ошибку
+        raise ValueError(
+            f"Ошибка парсинга JSON ответа от VLM: {str(e)}. Ответ: {response.content[:500]}"
+        )
 
     required_keys = [
         "balance_head_table",

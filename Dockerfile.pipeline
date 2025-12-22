@@ -1,0 +1,32 @@
+# Dockerfile для контейнера OCR Pipeline
+# Этот контейнер устанавливает зависимости в /deps
+# Код пайплайна монтируется напрямую с хоста в OpenWebUI
+
+FROM python:3.11-slim
+
+# Установка системных зависимостей
+# Необходимы для PyMuPDF и opencv-python
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копирование requirements.txt
+COPY requirements.txt /tmp/requirements.txt
+
+# Установка Python зависимостей в /deps
+RUN mkdir -p /deps && \
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --target=/deps -r /tmp/requirements.txt
+
+# Проверка установки
+RUN PYTHONPATH=/deps python -c "import fitz; import docx; import PIL; import cv2; import numpy; import langchain_openai; import pydantic; print('All dependencies installed successfully')"
+
+# Объявляем volume для зависимостей
+# При первом запуске контейнера данные из /deps копируются в volume
+VOLUME ["/deps"]
+
+# Держим контейнер запущенным
+CMD ["tail", "-f", "/dev/null"]
+
