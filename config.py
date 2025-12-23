@@ -1,8 +1,9 @@
+import os
 from typing import Final
 
-VLM_API_URL: Final[str] = "http://host.docker.internal:8000/v1"
-VLM_API_KEY: Final[str] = "token-abc"
-VLM_MODEL_NAME: Final[str] = "qwen3vl-8b-instruct-fp8"
+VLM_API_URL: Final[str] = os.getenv("VLM_API_URL", "http://localhost:8000/v1")
+VLM_API_KEY: Final[str] = os.getenv("VLM_API_KEY", "token-abc")
+VLM_MODEL_NAME: Final[str] = os.getenv("VLM_MODEL_NAME", "qwen3vl-8b-instruct-fp8")
 
 OCR_TEMPERATURE: Final[float] = 0.0
 JSON_TEMPERATURE: Final[float] = 0.0

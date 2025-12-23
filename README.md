@@ -12,21 +12,18 @@
 
 ## Архитектура
 
-Проект следует лучшим практикам создания пайплайнов:
+Проект следует лучшим практикам создания пайплайнов для OpenWebUI:
 
 ```
 OCR/
-├── __init__.py              # Точка входа для OpenWebUI (класс Pipeline с методом on_file)
-├── pipeline.py              # Основной пайплайн OCR (класс OCRPipeline)
+├── __init__.py              # Точка входа для OpenWebUI (экспорт класса Pipeline)
+├── pipeline.py              # Основной пайплайн OCR (класс Pipeline с методом pipe)
 ├── file_processor.py        # Обработка различных типов файлов (PDF, DOCX, изображения)
-├── validators.py            # Валидация входных данных
-├── pdf_handler.py           # Извлечение и подготовка изображений из PDF (legacy, используется FileProcessor)
 ├── image_enhancer.py        # Улучшение качества сканов для OCR
-├── vlm_client.py           # Работа с VLM через OpenAI-совместимый API (асинхронные функции)
-├── markdown_postproc.py    # Постобработка OCR-результата
-├── prompts.py              # Промпты для VLM
-├── schemas.py              # Pydantic-модели и парсер
-└── config.py               # Конфигурация (URL, токен, модель и т.д.)
+├── markdown_postproc.py     # Постобработка OCR-результата
+├── prompts.py               # Промпты для VLM
+├── schemas.py               # Pydantic-модели и парсер
+└── config.py                # Конфигурация (URL, токен, модель и т.д.)
 ```
 
 ## Поддерживаемые форматы
@@ -41,12 +38,18 @@ OCR/
 
 ## Основные компоненты
 
-### OCRPipeline (`pipeline.py`)
+### Pipeline (`pipeline.py`)
 Основной класс пайплайна, который координирует все этапы обработки:
 - Определение типа файла
 - Извлечение изображений
 - Двухэтапный OCR (Markdown → JSON)
 - Обработка ошибок
+
+Класс `Pipeline` является входной точкой для OpenWebUI и должен иметь:
+- Класс `Valves` с настройками (наследуется от `BaseModel`)
+- Метод `__init__()` для инициализации
+- Метод `pipe()` для обработки запросов
+- Опциональные методы `on_startup()` и `on_shutdown()`
 
 ### FileProcessor (`file_processor.py`)
 Универсальный обработчик файлов:
@@ -55,77 +58,81 @@ OCR/
 - Тайлинг больших изображений для обработки VLM
 - Улучшение качества изображений для OCR
 
-### Валидация (`validators.py`)
-Валидация входных данных от OpenWebUI:
-- Проверка структуры запроса
-- Валидация информации о файлах
-- Проверка наличия данных
-
 ## Использование
 
 ### Интеграция с OpenWebUI
 
-Пайплайн интегрируется с OpenWebUI через класс `Pipeline` с асинхронным методом `on_file()`:
+Пайплайн интегрируется с OpenWebUI через класс `Pipeline` с методом `pipe()`:
 
 ```python
 class Pipeline:
+    class Valves(BaseModel):
+        VLM_API_URL: str
+        VLM_API_KEY: str
+        VLM_MODEL_NAME: str
+
     def __init__(self):
-        """Инициализирует пайплайн."""
-        self.ocr_pipeline = OCRPipeline()
+        self.name = "OCR Pipeline"
+        self.valves = self.Valves(...)
 
-    async def on_file(self, file: Dict[str, Any]) -> Dict[str, Any]:
-        """Асинхронно обрабатывает файл через двухэтапный OCR пайплайн."""
-        # Обработка файла и возврат словаря с результатом
+    def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> Union[str, Generator, Iterator]:
+        # Обработка файлов из body["files"]
+        # Возврат результата в виде строки или генератора
 ```
 
-OpenWebUI автоматически создает экземпляр класса `Pipeline` и вызывает метод `on_file()` для каждого загруженного файла.
+OpenWebUI автоматически создает экземпляр класса `Pipeline` и вызывает метод `pipe()` для каждого запроса с файлами.
 
-### Пример использования
+### Установка
 
-```python
-from OCR import Pipeline
+1. Скопируйте папку `OCR` в директорию `/app/pipelines/` контейнера OpenWebUI или смонтируйте её через volume.
 
-# OpenWebUI автоматически создаст экземпляр
-pipeline = Pipeline()
+2. Установите зависимости в контейнере OpenWebUI:
 
-# Метод вызывается для каждого файла
-result = await pipeline.on_file({
-    "data": "base64_data_или_data_url",
-    "name": "document.pdf"
-})
-# Возвращает словарь с результатом или {"error": "..."}
+```bash
+pip install -r requirements.txt
 ```
+
+3. Настройте переменные окружения (опционально):
+
+```bash
+export VLM_API_URL="http://localhost:8000/v1"
+export VLM_API_KEY="your-api-key"
+export VLM_MODEL_NAME="qwen3vl-8b-instruct-fp8"
+```
+
+Или установите их в `config.py` напрямую.
 
 ## Зависимости
 
-Основные зависимости:
+Основные зависимости (см. `requirements.txt`):
 - `PyMuPDF` (fitz) - обработка PDF
 - `python-docx` - обработка Word документов
 - `Pillow` (PIL) - работа с изображениями
 - `opencv-python` (cv2) - улучшение изображений
 - `langchain-openai` - работа с VLM API
-- `pydantic` - валидация данных
 - `langchain-core` - базовые компоненты LangChain
+- `pydantic` - валидация данных
+- `nest-asyncio` - для работы с асинхронностью
 
 ## Конфигурация
 
-Настройки находятся в `config.py`:
-- URL VLM API
-- API ключ
-- Имя модели
-- Параметры температуры и штрафов
+Настройки находятся в `config.py` или могут быть заданы через переменные окружения:
+- `VLM_API_URL` - URL VLM API (по умолчанию: `http://localhost:8000/v1`)
+- `VLM_API_KEY` - API ключ (по умолчанию: `token-abc`)
+- `VLM_MODEL_NAME` - Имя модели (по умолчанию: `qwen3vl-8b-instruct-fp8`)
+- Параметры температуры и штрафов для OCR и JSON этапов
 - Параметры обработки изображений (DPI, размер тайлов, перекрытие)
 
 ## Обработка ошибок
 
 Пайплайн включает многоуровневую обработку ошибок:
-1. Валидация входных данных
+1. Проверка наличия файлов в запросе
 2. Проверка типа файла
 3. Проверка наличия изображений
 4. Проверка результатов OCR
 5. Обработка исключений с информативными сообщениями
 
-Все ошибки возвращаются в формате JSON с полем `error`.
+Все ошибки возвращаются в виде строки с описанием проблемы.
 
 ## Лучшие практики
 
@@ -133,11 +140,10 @@ result = await pipeline.on_file({
 
 1. **Разделение ответственности**: Каждый модуль отвечает за свою область
 2. **Модульность**: Компоненты легко тестировать и заменять
-3. **Валидация**: Проверка данных на всех этапах
-4. **Обработка ошибок**: Информативные сообщения об ошибках
-5. **Типизация**: Использование type hints для лучшей читаемости
-6. **Документация**: Docstrings для всех публичных методов
-7. **Расширяемость**: Легко добавить поддержку новых форматов
+3. **Обработка ошибок**: Информативные сообщения об ошибках
+4. **Типизация**: Использование type hints для лучшей читаемости
+5. **Документация**: Docstrings для всех публичных методов
+6. **Расширяемость**: Легко добавить поддержку новых форматов
 
 ## Расширение функциональности
 
@@ -145,138 +151,7 @@ result = await pipeline.on_file({
 
 1. Добавьте определение типа в `FileProcessor.detect_file_type()`
 2. Реализуйте метод извлечения изображений в `FileProcessor`
-3. Добавьте обработку в `OCRPipeline._extract_images()`
-
-## Установка и запуск с Docker
-
-### Требования
-
-- Docker и Docker Compose установлены
-- VLM API доступен (локально или в Docker сети)
-
-### Быстрый старт
-
-1. **Клонируйте или скопируйте проект**
-
-2. **Настройте переменные окружения (опционально)**
-
-   Создайте файл `.env` на основе `.env.example`:
-   ```bash
-   cp .env.example .env
-   # Отредактируйте .env и укажите настройки VLM API
-   ```
-
-3. **Соберите и запустите контейнеры**
-
-   ```bash
-   # Сборка контейнера пайплайна
-   docker-compose build ocr-pipeline
-
-   # Запуск всех сервисов
-   docker-compose up -d
-
-   # Просмотр логов
-   docker-compose logs -f
-   ```
-
-4. **Проверьте работу**
-
-   - Откройте OpenWebUI: http://localhost:3000
-   - Загрузите файл (PDF/DOCX/изображение)
-   - Пайплайн автоматически обработает файл
-
-### Структура Docker контейнеров
-
-Проект использует архитектуру с sidecar контейнером:
-
-```
-┌─────────────────────┐
-│  ocr-pipeline       │  ← Контейнер с пайплайном и зависимостями
-│  - Код пайплайна    │
-│  - Python зависимости│
-└─────────────────────┘
-         │
-         │ Shared Volume
-         ▼
-┌─────────────────────┐
-│  open-webui          │  ← Оригинальный OpenWebUI контейнер
-│  - Монтирует пайплайн│
-│  - Использует зависимости│
-└─────────────────────┘
-```
-
-### Проверка установки
-
-```bash
-# Проверьте, что контейнеры запущены
-docker-compose ps
-
-# Проверьте логи пайплайна
-docker-compose logs ocr-pipeline
-
-# Проверьте логи OpenWebUI
-docker-compose logs open-webui
-
-# Проверьте установку зависимостей в контейнере пайплайна
-docker exec -it ocr-pipeline python -c "import fitz; import docx; import PIL; import cv2; print('All OK')"
-
-# Проверьте, что пайплайн виден в OpenWebUI
-docker exec -it open-webui ls -la /app/pipelines/OCR
-```
-
-### Настройка VLM API
-
-Если VLM API запущен в другой Docker сети:
-
-1. **Добавьте VLM API в docker-compose.yml:**
-
-   ```yaml
-   services:
-     vlm-api:
-       image: your-vlm-api-image:latest
-       container_name: vlm-api
-       ports:
-         - "8000:8000"
-       networks:
-         - open-webui-network
-
-     open-webui:
-       # ...
-       environment:
-         - VLM_API_URL=http://vlm-api:8000/v1  # Используйте имя сервиса
-   ```
-
-2. **Или если VLM API на хосте:**
-
-   ```yaml
-   open-webui:
-     extra_hosts:
-       - "host.docker.internal:host-gateway"
-     environment:
-       - VLM_API_URL=http://host.docker.internal:8000/v1
-   ```
-
-### Обновление пайплайна
-
-После изменения кода пайплайна:
-
-```bash
-# Пересоберите контейнер пайплайна
-docker-compose build ocr-pipeline
-
-# Перезапустите контейнеры
-docker-compose restart ocr-pipeline open-webui
-```
-
-### Остановка и очистка
-
-```bash
-# Остановка контейнеров
-docker-compose down
-
-# Остановка с удалением volumes (удалит все данные!)
-docker-compose down -v
-```
+3. Добавьте обработку в `Pipeline._extract_images()`
 
 ## Лицензия
 
