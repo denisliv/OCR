@@ -30,12 +30,17 @@ VLM_API_URL=http://vlm-api:8000/v1
 # Сборка контейнера пайплайна
 docker-compose build ocr-pipeline
 
+# Инициализация зависимостей (запускается один раз)
+docker-compose --profile init up ocr-pipeline-init
+
 # Запуск всех сервисов
 docker-compose up -d
 
 # Просмотр логов
 docker-compose logs -f
 ```
+
+**Примечание:** Init контейнер нужно запустить только один раз при первом создании volume. При последующих запусках достаточно `docker-compose up -d`.
 
 ### 4. Проверка работы
 
@@ -89,10 +94,11 @@ docker exec -it open-webui ls -la /app/pipelines/OCR
 ```
 
 **Как это работает:**
-1. Контейнер `ocr-pipeline` устанавливает зависимости в `/deps` при сборке образа
-2. При первом запуске Docker автоматически копирует данные из образа в named volume `ocr-pipeline-deps`
+1. Контейнер `ocr-pipeline` устанавливает зависимости в `/deps-source` при сборке образа
+2. **Init контейнер** (`ocr-pipeline-init`) копирует зависимости из `/deps-source` образа в named volume `ocr-pipeline-deps` при первом запуске
 3. Код пайплайна монтируется напрямую с хоста (`./OCR`) в OpenWebUI
 4. Зависимости монтируются из volume в OpenWebUI
+5. Основной контейнер `ocr-pipeline` просто держит образ с зависимостями (для переинициализации при необходимости)
 
 ## Обновление пайплайна
 

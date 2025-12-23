@@ -1,9 +1,36 @@
 version: '3.8'
 
 services:
+  # Init контейнер: копирует зависимости из образа в volume при первом запуске
+  # Запускается один раз при создании volume
+  ocr-pipeline-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    image: ocr-pipeline:latest
+    volumes:
+      - ocr-pipeline-deps:/deps
+    command: >
+      sh -c "
+        if [ ! -f /deps/.initialized ]; then
+          echo '========================================'
+          echo 'Initializing OCR Pipeline dependencies...'
+          echo '========================================'
+          echo 'Copying dependencies from image to volume...'
+          cp -r /deps-source/* /deps/ 2>/dev/null || true
+          touch /deps/.initialized
+          echo '✓ Dependencies copied successfully'
+          echo '========================================'
+        else
+          echo 'Dependencies already initialized'
+        fi
+      "
+    profiles:
+      - init
+
   # Контейнер с OCR Pipeline и зависимостями
-  # Этот контейнер устанавливает зависимости в /deps при сборке
-  # При первом запуске Docker автоматически копирует данные из образа в volume
+  # Этот контейнер просто держит зависимости в образе
+  # Реальные зависимости используются из volume, который заполнен init контейнером
   ocr-pipeline:
     build:
       context: .
@@ -11,9 +38,7 @@ services:
     image: ocr-pipeline:latest
     container_name: ocr-pipeline
     volumes:
-      # Volume для зависимостей - монтируется в OpenWebUI
-      # При первом монтировании Docker автоматически копирует данные из /deps образа в volume
-      - ocr-pipeline-deps:/deps
+      - ocr-pipeline-deps:/deps:ro
     networks:
       - open-webui-network
     restart: unless-stopped

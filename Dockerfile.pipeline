@@ -1,6 +1,6 @@
 # Dockerfile для контейнера OCR Pipeline
-# Этот контейнер устанавливает зависимости в /deps
-# Код пайплайна монтируется напрямую с хоста в OpenWebUI
+# Этот контейнер устанавливает зависимости в /deps-source
+# Init контейнер копирует их в volume при первом запуске
 
 FROM python:3.11-slim
 
@@ -15,17 +15,13 @@ RUN apt-get update && apt-get install -y \
 # Копирование requirements.txt
 COPY requirements.txt /tmp/requirements.txt
 
-# Установка Python зависимостей в /deps
-RUN mkdir -p /deps && \
+# Установка Python зависимостей в /deps-source (исходная директория)
+RUN mkdir -p /deps-source && \
     pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --target=/deps -r /tmp/requirements.txt
+    pip install --no-cache-dir --target=/deps-source -r /tmp/requirements.txt
 
 # Проверка установки
-RUN PYTHONPATH=/deps python -c "import fitz; import docx; import PIL; import cv2; import numpy; import langchain_openai; import pydantic; print('All dependencies installed successfully')"
-
-# Объявляем volume для зависимостей
-# При первом запуске контейнера данные из /deps копируются в volume
-VOLUME ["/deps"]
+RUN PYTHONPATH=/deps-source python -c "import fitz; import docx; import PIL; import cv2; import numpy; import langchain_openai; import pydantic; print('All dependencies installed successfully')"
 
 # Держим контейнер запущенным
 CMD ["tail", "-f", "/dev/null"]
